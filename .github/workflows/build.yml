@@ -1,0 +1,61 @@
+name: Build 3105
+
+on:
+workflow_dispatch:
+push:
+branches:
+- main
+
+jobs:
+build:
+name: Build 3105 iOS
+runs-on: macos-15
+
+steps:
+  - name: Checkout
+    uses: actions/checkout@v4
+  - name: Select Xcode
+    run: |
+      sudo xcode-select -s /Applications/Xcode_16.4.app
+      xcodebuild -version
+  - name: Show project
+    run: |
+      xcodebuild -list \
+        -project ThreeOneOSFive.xcodeproj
+  - name: Build unsigned IPA
+    run: |
+      mkdir -p build
+      xcodebuild \
+        -project ThreeOneOSFive.xcodeproj \
+        -scheme 3105 \
+        -configuration Release \
+        -sdk iphoneos \
+        -destination 'generic/platform=iOS' \
+        -derivedDataPath build/DerivedData \
+        CODE_SIGNING_ALLOWED=NO \
+        CODE_SIGNING_REQUIRED=NO \
+        clean build
+  - name: Package IPA
+    run: |
+      APP_PATH="build/DerivedData/Build/Products/Release-iphoneos/3105.app"
+      if [ ! -d "$APP_PATH" ]; then
+        echo "ERROR: 3105.app tidak ditemukan"
+        exit 1
+      fi
+      mkdir -p build/Payload
+      cp -R "$APP_PATH" build/Payload/3105.app
+      cd build
+      zip -qry "3105-unsigned.ipa" Payload
+  - name: Upload IPA
+    uses: actions/upload-artifact@v4
+    with:
+      name: 3105-unsigned-ipa
+      path: build/3105-unsigned.ipa
+      if-no-files-found: error
+  - name: Upload build log
+    if: always()
+    uses: actions/upload-artifact@v4
+    with:
+      name: 3105-build-files
+      path: build/
+      retention-days: 7
