@@ -1,64 +1,89 @@
-name: Build 3105
+name: Build ibaal3105
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Build 3105
-    runs-on: macos-15
+    runs-on: macos-latest
 
     steps:
-      - name: Checkout source
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show Xcode version
+      - name: Select Xcode
+        shell: bash
         run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
           xcodebuild -version
-          xcode-select -p
 
-      - name: Show project information
+      - name: Find Xcode project
+        shell: bash
         run: |
-          xcodebuild -project ThreeOneOSFive.xcodeproj -list
+          echo "=== XCODE PROJECTS ==="
+          find . -maxdepth 6 -type d -name "*.xcodeproj" -print
+          echo "======================"
 
-      - name: Build unsigned IPA
+      - name: Build ibaal3105
+        shell: bash
         run: |
-          set -e
+          set -o pipefail
 
-          rm -rf build
-          mkdir -p build/Payload
+          PROJECT="ibaal3105/ThreeOneOSFive.xcodeproj"
 
-          xcodebuild \
-            -project ThreeOneOSFive.xcodeproj \
-            -scheme 3105 \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/DerivedData \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
-
-          APP_PATH="$(find build/DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' -type d | head -n 1)"
-
-          if [ -z "$APP_PATH" ]; then
-            echo "ERROR: .app tidak ditemukan."
-            exit 1
+          if [ ! -d "$PROJECT" ]; then
+            echo "ERROR: Project tidak ditemukan:"
+            echo "$PROJECT"
+            echo ""
+            echo "Project yang ditemukan:"
+            find . -maxdepth 6 -type d -name "*.xcodeproj" -print
+            exit 66
           fi
 
-          echo "Found app: $APP_PATH"
-          cp -R "$APP_PATH" build/Payload/
+          rm -rf build
+          mkdir -p build/Release-iphoneos
 
-          cd build
-          zip -qry 3105-unsigned.ipa Payload
+          xcodebuild \
+            -project "$PROJECT" \
+            -target ibaal3105 \
+            -configuration Release \
+            -sdk iphoneos \
+            CONFIGURATION_BUILD_DIR="$PWD/build/Release-iphoneos" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tee build.log
 
-      - name: Upload unsigned IPA
+          STATUS=${PIPESTATUS[0]}
+
+          echo ""
+          echo "========================================"
+          echo "       ACTUAL COMPILER ERRORS"
+          echo "========================================"
+
+          grep -nE \
+            "error:|fatal error:|SwiftCompile|CompileSwift" \
+            build.log \
+            | tail -100 || true
+
+          echo ""
+          echo "========================================"
+          echo "          BUILD SUMMARY"
+          echo "========================================"
+
+          tail -100 build.log
+
+          echo ""
+          echo "Build exit status: $STATUS"
+
+          exit "$STATUS"
+
+      - name: Upload build log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: 3105-unsigned-ipa
-          path: build/3105-unsigned.ipa
-          if-no-files-found: error
+          name: ibaal3105-build-log
+          path: build.log
+          if-no-files-found: ignore
